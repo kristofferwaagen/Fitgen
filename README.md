@@ -6,8 +6,7 @@ This project allows users to upload photos of their clothing items and categoriz
 
 1. Clone the repository.
 2. Install the required dependencies.
-3. Run the training script to train the model.
-4. Use the GUI to upload images of clothing items, remove backgrounds, categorize them, and randomize outfits.
+3. Use the GUI to upload images of clothing items, remove backgrounds, categorize them, and randomize outfits.
 
 ## Installation
 
