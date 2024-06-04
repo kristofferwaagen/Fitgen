@@ -20,3 +20,7 @@ python randomizer.py
 1. **README.md**: Detailed instructions on the project usage, including installation, training, and running the GUI.
 2. **requirements.txt**: Lists the dependencies required for the project.
 3. **randomizer.py**: GUI application script to upload, process, categorize images, and randomize outfits.
+
+### Example images
+
+There are some exampleImages provided that a user can use to test the functionality of the program.
