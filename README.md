@@ -26,4 +26,4 @@ python randomizer.py
 
 ### Example images
 
-There are some exampleImages provided that a user can use to test the functionality of the program.
+There are some images provided in exampleImages that a user can use to test the functionality of the program.
