@@ -11,7 +11,10 @@ This project allows users to upload photos of their clothing items and categoriz
 ## Installation
 
 ```bash
+# if running on python 2.x
 pip install -r requirements.txt
+# if running on python 3.x
+pip3 install -r requirements.txt
 python randomizer.py
 ```
 
