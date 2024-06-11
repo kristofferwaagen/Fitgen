@@ -10,6 +10,7 @@ import hashlib
 # Categories
 categories = ["tops", "bottoms", "shoes"]
 base_dir = "clothing_items"
+favorites_file = os.path.join(base_dir, "favorites.json")
 
 # Create directories for storing clothing items and metadata
 for category in categories:
@@ -30,6 +31,18 @@ def load_existing_hashes():
 
 # Set of all existing image hashes
 existing_hashes = load_existing_hashes()
+
+# Load favorites from file
+def load_favorites():
+    if os.path.exists(favorites_file):
+        with open(favorites_file, 'r') as f:
+            return json.load(f)
+    return []
+
+# Save favorites to file
+def save_favorites(favorites):
+    with open(favorites_file, 'w') as f:
+        json.dump(favorites, f, indent=4)
 
 # Calculate the hash of an image
 def calculate_image_hash(image):
@@ -150,6 +163,27 @@ def randomize_outfit():
         bottom_name_label.config(text=names['bottoms'])
         shoes_name_label.config(text=names['shoes'])
 
+        # Enable the "Favorite" button
+        favorite_button.config(state=tk.NORMAL)
+
+        # Store the current outfit for potential favoriting
+        global current_outfit
+        current_outfit = {
+            'top': outfit['tops'],
+            'bottom': outfit['bottoms'],
+            'shoes': outfit['shoes'],
+            'top_name': names['tops'],
+            'bottom_name': names['bottoms'],
+            'shoes_name': names['shoes']
+        }
+
+# Favorite the current outfit
+def favorite_outfit():
+    favorites = load_favorites()
+    favorites.append(current_outfit)
+    save_favorites(favorites)
+    status_label.config(text="Outfit added to favorites.")
+
 # View and delete uploaded images
 def view_uploaded_images():
     def on_image_click(event, img_path, metadata_path):
@@ -212,6 +246,85 @@ def view_uploaded_images():
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
 
+# View and delete favorite outfits
+def view_favorites():
+    def on_favorite_click(event, favorite):
+        if messagebox.askyesno("Delete Favorite", "Are you sure you want to delete this favorite?"):
+            favorites.remove(favorite)
+            save_favorites(favorites)
+            refresh_favorites()
+
+    def refresh_favorites():
+        for widget in scrollable_frame.winfo_children():
+            widget.destroy()
+
+        row = 0
+        for favorite in favorites:
+            # Create a frame for the outfit
+            outfit_frame = tk.Frame(scrollable_frame)
+            outfit_frame.grid(row=row, column=0, padx=5, pady=5, sticky="w")
+            row += 1
+
+            # Add images and labels in a grid
+            top_img_path = os.path.join(base_dir, 'tops', favorite['top'])
+            bottom_img_path = os.path.join(base_dir, 'bottoms', favorite['bottom'])
+            shoes_img_path = os.path.join(base_dir, 'shoes', favorite['shoes'])
+
+            top_img = Image.open(top_img_path)
+            bottom_img = Image.open(bottom_img_path)
+            shoes_img = Image.open(shoes_img_path)
+
+            top_img.thumbnail((100, 100))
+            bottom_img.thumbnail((100, 100))
+            shoes_img.thumbnail((100, 100))
+
+            top_img_tk = ImageTk.PhotoImage(top_img)
+            bottom_img_tk = ImageTk.PhotoImage(bottom_img)
+            shoes_img_tk = ImageTk.PhotoImage(shoes_img)
+
+            top_label = tk.Label(outfit_frame, image=top_img_tk)
+            top_label.image = top_img_tk
+            top_label.grid(row=0, column=0)
+
+            bottom_label = tk.Label(outfit_frame, image=bottom_img_tk)
+            bottom_label.image = bottom_img_tk
+            bottom_label.grid(row=0, column=1)
+
+            shoes_label = tk.Label(outfit_frame, image=shoes_img_tk)
+            shoes_label.image = shoes_img_tk
+            shoes_label.grid(row=0, column=2)
+
+            favorite_label = tk.Label(outfit_frame, text=f"{favorite['top_name']}, {favorite['bottom_name']}, {favorite['shoes_name']}")
+            favorite_label.grid(row=0, column=3, padx=10)
+
+            outfit_frame.bind("<Button-1>", lambda e, fav=favorite: on_favorite_click(e, fav))
+
+    # Load favorites
+    favorites = load_favorites()
+
+    # Window to show all favorites
+    view_window = tk.Toplevel(root)
+    view_window.title("Favorite Outfits")
+    view_window.geometry("800x800")
+    canvas = tk.Canvas(view_window)
+    scrollbar = tk.Scrollbar(view_window, orient="vertical", command=canvas.yview)
+    scrollable_frame = tk.Frame(canvas)
+
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(
+            scrollregion=canvas.bbox("all")
+        )
+    )
+
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    refresh_favorites()
+
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
 # Main window
 root = tk.Tk()
 root.title("Fitgen")
@@ -247,9 +360,17 @@ status_label.pack(pady=5)
 randomize_button = tk.Button(root, text="Randomize Outfit", command=randomize_outfit)
 randomize_button.pack(pady=5)
 
+# Favorite the outfit
+favorite_button = tk.Button(root, text="Favorite Outfit", command=favorite_outfit, state=tk.DISABLED)
+favorite_button.pack(pady=5)
+
 # View uploaded images
 view_button = tk.Button(root, text="View Uploaded Images", command=view_uploaded_images)
 view_button.pack(pady=5)
+
+# View favorite outfits
+view_favorites_button = tk.Button(root, text="View Favorite Outfits", command=view_favorites)
+view_favorites_button.pack(pady=5)
 
 # GUI loop
 root.mainloop()
