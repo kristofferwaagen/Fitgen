@@ -1,3 +1,7 @@
+# Note
+
+Performance may vary upon device used to run the program as the software for removing the background is quite process heavy
+
 # Fitgen
 
 This project allows users to upload photos of their clothing items and categorizes them as tops, bottoms, or shoes. Users can then click a "Randomize" button to generate a random outfit consisting of a top, bottom, and shoes.

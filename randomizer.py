@@ -188,9 +188,21 @@ def favorite_outfit():
 def view_uploaded_images():
     def on_image_click(event, img_path, metadata_path):
         if messagebox.askyesno("Delete Image", "Are you sure you want to delete this image?"):
-            os.remove(img_path)
-            os.remove(metadata_path)
-            refresh_images()
+        # Load the metadata first to retrieve the hash
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                image_hash = metadata.get('hash')
+        
+        # Remove the hash from the global set of hashes
+        if image_hash in existing_hashes:
+            existing_hashes.remove(image_hash)
+        
+        # Now safely delete the image and metadata files
+        os.remove(img_path)
+        os.remove(metadata_path)
+
+        # Refresh the displayed images
+        refresh_images()
 
     def refresh_images():
         for widget in scrollable_frame.winfo_children():
