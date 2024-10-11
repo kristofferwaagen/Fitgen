@@ -6,13 +6,16 @@ import os
 import random
 import json
 import hashlib
+import time
 
-# Categories
+# Categories for clothing
 categories = ["tops", "bottoms", "shoes"]
 base_dir = "clothing_items"
 favorites_file = os.path.join(base_dir, "favorites.json")
+last_randomization_time = 0  # Tracks the time of the last randomization
+randomization_delay = 1.0  # 1 second delay between randomizations
 
-# Create directories for storing clothing items and metadata
+# Create directories for storing clothing items and metadata if they don't exist
 for category in categories:
     os.makedirs(os.path.join(base_dir, category), exist_ok=True)
     os.makedirs(os.path.join(base_dir, f"{category}_metadata"), exist_ok=True)
@@ -35,14 +38,22 @@ existing_hashes = load_existing_hashes()
 # Load favorites from file
 def load_favorites():
     if os.path.exists(favorites_file):
-        with open(favorites_file, 'r') as f:
-            return json.load(f)
+        try:
+            with open(favorites_file, 'r') as f:
+                data = f.read().strip()
+                if not data:  # Handle empty file case
+                    return []
+                return json.loads(data)
+        except (json.JSONDecodeError, FileNotFoundError):
+            # If the file is empty, corrupted, or missing, return an empty list
+            return []
     return []
 
 # Save favorites to file
 def save_favorites(favorites):
-    with open(favorites_file, 'w') as f:
-        json.dump(favorites, f, indent=4)
+    if isinstance(favorites, list):
+        with open(favorites_file, 'w') as f:
+            json.dump(favorites, f, indent=4)
 
 # Calculate the hash of an image
 def calculate_image_hash(image):
@@ -55,6 +66,15 @@ def calculate_image_hash(image):
 # Check if an image hash exists in the global set of hashes
 def is_duplicate_image(image_hash):
     return image_hash in existing_hashes
+
+# Downscale the image before processing to reduce memory usage and improve performance
+def downscale_image(image, max_size=(800, 800)):
+    """
+    Rescale the image so that its longest side is max_size.
+    This reduces image size to optimize performance on mobile devices.
+    """
+    image.thumbnail(max_size)
+    return image
 
 # Clear previous images and status messages
 def clear_previous():
@@ -73,49 +93,65 @@ def upload_image():
     file_path = filedialog.askopenfilename()
     if file_path:
         image_hash = calculate_image_hash(file_path)
-        
+
         # Check if the image is a duplicate
         if is_duplicate_image(image_hash):
             status_label.config(text="Duplicate image detected. Image not uploaded.")
             return
-        
+
         # Ask the user to define the category
         category = simpledialog.askstring("Input", f"Define the category for this item (choose from: {', '.join(categories)}):", parent=root)
         if category and category.lower() in categories:
+            base_name = os.path.basename(file_path).rsplit('.', 1)[0]
+            output_path = os.path.join(base_dir, category.lower(), f"{base_name}_no_bg.png")
+            metadata_path = os.path.join(base_dir, f"{category.lower()}_metadata", f"{base_name}.json")
+
+            # If the image has been processed before, skip processing
+            if os.path.exists(output_path):
+                status_label.config(text="Image already processed. Using the existing image.")
+                return
+
             input_image = Image.open(file_path)
-            
-            # Remove the background
+
+            # Downscale the image to reduce memory usage
+            input_image = downscale_image(input_image)
+
+            # Remove the background using rembg
             output_image = remove(input_image)
-            
-            # Display the output image
+
+            # Display the output image (further downscale for display purposes)
             output_image.thumbnail((400, 400))
             output_image_tk = ImageTk.PhotoImage(output_image)
             output_image_label.config(image=output_image_tk)
             output_image_label.image = output_image_tk
-            
-            # Ask the user to name the item
+
+            # Ask the user to name the item and save it
             item_name = simpledialog.askstring("Input", "Name the item:", parent=root)
             if item_name:
-                base_name = os.path.basename(file_path).rsplit('.', 1)[0]
-                output_path = os.path.join(base_dir, category.lower(), f"{base_name}_no_bg.png")
-                metadata_path = os.path.join(base_dir, f"{category.lower()}_metadata", f"{base_name}.json")
-                
                 # Save the image and metadata
                 output_image.save(output_path)
                 with open(metadata_path, 'w') as f:
                     json.dump({'name': item_name, 'hash': image_hash}, f)
-                
+
                 # Add the new hash to the global set of hashes
                 existing_hashes.add(image_hash)
-                
+
                 status_label.config(text=f"Saved output image to: {output_path}")
             else:
                 status_label.config(text="Item name not provided. Please try again.")
         else:
             status_label.config(text="Invalid category. Please try again.")
 
-# Randomize the outfit
+# Randomize the outfit, with throttling to avoid excessive CPU usage
 def randomize_outfit():
+    global last_randomization_time, current_outfit  # Define current_outfit as global here
+
+    # Check if enough time has passed since the last randomization
+    current_time = time.time()
+    if current_time - last_randomization_time < randomization_delay:
+        status_label.config(text="Please wait before randomizing again.")
+        return
+
     clear_previous()
     outfit = {}
     names = {}
@@ -139,11 +175,11 @@ def randomize_outfit():
     if missing_categories:
         status_label.config(text=f"Cannot create outfit. Missing items in: {', '.join(missing_categories)}")
     else:
+        # Load images and display them (further downscaling for mobile efficiency)
         top_image = Image.open(os.path.join(base_dir, 'tops', outfit['tops']))
         bottom_image = Image.open(os.path.join(base_dir, 'bottoms', outfit['bottoms']))
         shoes_image = Image.open(os.path.join(base_dir, 'shoes', outfit['shoes']))
 
-        # Display images
         top_image.thumbnail((200, 200))
         bottom_image.thumbnail((200, 200))
         shoes_image.thumbnail((200, 200))
@@ -163,11 +199,9 @@ def randomize_outfit():
         bottom_name_label.config(text=names['bottoms'])
         shoes_name_label.config(text=names['shoes'])
 
-        # Enable the "Favorite" button
         favorite_button.config(state=tk.NORMAL)
 
-        # Store the current outfit for potential favoriting
-        global current_outfit
+        # Store the current outfit in the global variable for favoriting
         current_outfit = {
             'top': outfit['tops'],
             'bottom': outfit['bottoms'],
@@ -177,32 +211,39 @@ def randomize_outfit():
             'shoes_name': names['shoes']
         }
 
+    # Update the time of the last randomization
+    last_randomization_time = current_time
+
 # Favorite the current outfit
 def favorite_outfit():
     favorites = load_favorites()
-    favorites.append(current_outfit)
-    save_favorites(favorites)
-    status_label.config(text="Outfit added to favorites.")
+
+    # Check if current_outfit exists before adding to favorites
+    if 'current_outfit' in globals():
+        favorites.append(current_outfit)
+        save_favorites(favorites)
+        status_label.config(text="Outfit added to favorites.")
+    else:
+        status_label.config(text="No outfit to favorite. Randomize an outfit first.")
 
 # View and delete uploaded images
 def view_uploaded_images():
     def on_image_click(event, img_path, metadata_path):
         if messagebox.askyesno("Delete Image", "Are you sure you want to delete this image?"):
-        # Load the metadata first to retrieve the hash
+            # Load the metadata to get the hash
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
                 image_hash = metadata.get('hash')
-        
-        # Remove the hash from the global set of hashes
-        if image_hash in existing_hashes:
-            existing_hashes.remove(image_hash)
-        
-        # Now safely delete the image and metadata files
-        os.remove(img_path)
-        os.remove(metadata_path)
 
-        # Refresh the displayed images
-        refresh_images()
+            # Remove the hash from the global set of hashes
+            if image_hash in existing_hashes:
+                existing_hashes.remove(image_hash)
+
+            # Remove the image and metadata files
+            os.remove(img_path)
+            os.remove(metadata_path)
+
+            refresh_images()
 
     def refresh_images():
         for widget in scrollable_frame.winfo_children():
@@ -261,15 +302,17 @@ def view_uploaded_images():
 # View and delete favorite outfits
 def view_favorites():
     def on_favorite_click(event, favorite):
-        if messagebox.askyesno("Delete Favorite", "Are you sure you want to delete this favorite?"):
-            favorites.remove(favorite)
-            save_favorites(favorites)
-            refresh_favorites()
+        if messagebox.askyesno("Delete Favorite", f"Are you sure you want to delete this favorite outfit: {favorite['top_name']}, {favorite['bottom_name']}, {favorite['shoes_name']}?"):
+            favorites.remove(favorite)  # Remove the favorite from the list
+            save_favorites(favorites)  # Save the updated favorites list
+            refresh_favorites()  # Refresh the display after deletion
 
     def refresh_favorites():
+        # Clear previous widgets
         for widget in scrollable_frame.winfo_children():
             widget.destroy()
 
+        # Populate the favorite outfits in a grid
         row = 0
         for favorite in favorites:
             # Create a frame for the outfit
@@ -277,7 +320,7 @@ def view_favorites():
             outfit_frame.grid(row=row, column=0, padx=5, pady=5, sticky="w")
             row += 1
 
-            # Add images and labels in a grid
+            # Load images for the outfit
             top_img_path = os.path.join(base_dir, 'tops', favorite['top'])
             bottom_img_path = os.path.join(base_dir, 'bottoms', favorite['bottom'])
             shoes_img_path = os.path.join(base_dir, 'shoes', favorite['shoes'])
@@ -286,6 +329,7 @@ def view_favorites():
             bottom_img = Image.open(bottom_img_path)
             shoes_img = Image.open(shoes_img_path)
 
+            # Thumbnail the images
             top_img.thumbnail((100, 100))
             bottom_img.thumbnail((100, 100))
             shoes_img.thumbnail((100, 100))
@@ -294,6 +338,7 @@ def view_favorites():
             bottom_img_tk = ImageTk.PhotoImage(bottom_img)
             shoes_img_tk = ImageTk.PhotoImage(shoes_img)
 
+            # Display the images and outfit details
             top_label = tk.Label(outfit_frame, image=top_img_tk)
             top_label.image = top_img_tk
             top_label.grid(row=0, column=0)
@@ -306,12 +351,17 @@ def view_favorites():
             shoes_label.image = shoes_img_tk
             shoes_label.grid(row=0, column=2)
 
+            # Display the names of the outfit components
             favorite_label = tk.Label(outfit_frame, text=f"{favorite['top_name']}, {favorite['bottom_name']}, {favorite['shoes_name']}")
             favorite_label.grid(row=0, column=3, padx=10)
 
-            outfit_frame.bind("<Button-1>", lambda e, fav=favorite: on_favorite_click(e, fav))
+            # Bind the click event to the images and label for deleting
+            top_label.bind("<Button-1>", lambda e, fav=favorite: on_favorite_click(e, fav))
+            bottom_label.bind("<Button-1>", lambda e, fav=favorite: on_favorite_click(e, fav))
+            shoes_label.bind("<Button-1>", lambda e, fav=favorite: on_favorite_click(e, fav))
+            favorite_label.bind("<Button-1>", lambda e, fav=favorite: on_favorite_click(e, fav))
 
-    # Load favorites
+    # Load the favorites from the JSON file
     favorites = load_favorites()
 
     # Window to show all favorites
@@ -332,6 +382,7 @@ def view_favorites():
     canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
 
+    # Populate the favorites list
     refresh_favorites()
 
     canvas.pack(side="left", fill="both", expand=True)
